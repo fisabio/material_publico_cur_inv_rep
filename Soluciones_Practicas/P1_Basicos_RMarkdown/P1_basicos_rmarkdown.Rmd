@@ -1,0 +1,144 @@
+---
+title: "Práctica 1: R Markdown"
+subtitle: "Escribiendo informes reproducibles"
+date: "6 de Junio, 2017"
+output: pdf_document
+header-includes: \usepackage[spanish, es-tabla]{babel}
+---
+
+# Enunciado
+
+La **privación material** es un concepto sociológico que se corresponde con la *'falta de bienes, servicios, recursos y comodidades que son habituales, o están ampliamente extendidos, en una sociedad determinada'.* Un problema habitual a la hora de estudiar este concepto es que la privación no puede ser medida directamente y, por tanto, tiene que ser medida de forma indirecta a partir de otras variables que sean reflejo de la presencia o ausencia de este concepto en la población.
+
+En el archivo de datos `datos_practicas.RData` encontrarás el banco de datos `privacion_valencia` y el objeto espacial `carto_valencia` con la cartografía de la ciudad de Valencia. El banco de datos `privacion_valencia` contiene una serie de indicadores sociales para las 598 secciones censales de la ciudad de Valencia. Estos indicadores son en este orden: desempleo, instrucción insuficiente, instrucción insuficiente en jóvenes (16-29 años), trabajadores manuales, envejecimiento, trabajadores eventuales, residentes extranjeros, hogares mono-parentales, problemas de ruido, problemas de contaminación, problemas de limpieza, problemas de comunicación, problemas de zonas verdes, problemas de delincuencia y problemas de aseo. Todas las variables han sido medidas como el porcentaje de población (en cada sección) que pertenece a estos colectivos o que dice observar dichos problemas. Todos estos indicadores podrían ser reflejo de la privación económica de cada una de las secciones censales de la ciudad de Valencia.
+
+## Tareas
+
+1. Crea un proyecto de RStudio en un nuevo directorio con el nombre `practica_01_rmarkdown`. Este directorio debe tener una estructura de carpetas adecuada para la realización de esta práctica.
+
+2. Descarga el archivo de datos `datos_practicas.RData` del repositorio *figshare* cuya url es [https://ndownloader.figshare.com/files/8455721](https://ndownloader.figshare.com/files/8455721), guárdalo en la carpeta adecuada del directorio de tu proyecto y carga los datos en R.
+
+3. Construye a partir de la información disponible en el banco de datos `privacion_valencia` un índice de privación que cuantifique este factor en cada sección censal de la ciudad de Valencia. Para ello, debes realizar un análisis de componentes principales utilizando la función `princomp` de R. Resume los resultados obtenidos mediante:
+    - Una tabla con la desviación estándar, la proporción de varianza explicada y la varianza acumulada de las componentes principales.
+    - Otra tabla con los pesos de las variables originales en cada una de las componentes.
+
+4. Representa gráficamente las 4 primeras componentes principales del análisis en el mapa de la ciudad de Valencia. La primera componente principal resumirá la privación material de cada sección censal. Considera 5 grupos para categorizar las variables y utiliza la siguiente función para realizar la representación gráfica:
+
+```{r, eval = FALSE, echo = TRUE}
+pinta_mapas <- function(cartografia, variable, n_grupos) {
+  if (!require(RColorBrewer)){
+    install.packages("RColorBrewer")
+    library(RColorBrewer)
+  }
+  if (!require(sp)){
+    install.packages("sp")
+    library(sp)
+  }
+  paleta <- brewer.pal(n_grupos, "BrBG")
+  grupos <- quantile(variable, probs = seq(0, 1, 1 / n_grupos))
+  pcorte <- c(grupos[1] - 0.5, grupos[2:n_grupos], grupos[n_grupos + 1] + 0.5)
+  leyenda <- c()
+  for (j in 2:length(pcorte)){ 
+    leyenda[j] <- paste0(round(pcorte[j - 1], 2), " - ", round(pcorte[j], 2))
+    }
+  plot(cartografia, col = paleta[findInterval(variable[match(cartografia@data$CUSEC, 
+                                                      privacion_valencia[, 1])], pcorte)])
+  legend("bottomright", leyenda[-1], title = "Índice de privación", 
+         border = NULL, fill = paleta, bty = "n")
+}
+```
+
+5. Genera un informe PDF que contenga el código de R y los resultados obtenidos utilizando R Markdown. No olvides tener en cuenta las normas de sintaxis estudiadas en la sesión 2 de este curso.
+
+\newpage
+
+# Resolución
+
+```{r global_options}
+# Establezco el directorio raíz del documento y las opciones globales del código
+knitr::opts_knit$set(root.dir = normalizePath("../"))
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r princomp, results = 'asis'}
+# Tarea 1
+## Establezco la estructura de directorios del proyecto
+if (!dir.exists("datos")) dir.create("datos")
+if (!dir.exists("informes")) dir.create("informes")  
+
+# Tarea 2
+## Descargo los datos de figshare
+if (!file.exists("datos/datos_practicas.RData")) {
+  file_url <- "https://ndownloader.figshare.com/files/8455721"
+  download.file(file_url, destfile = "datos/datos_practicas.RData", mode = "wb")
+}
+
+## Cargo las librerías necesarias y los datos
+library(pander)
+load("datos/datos_practicas.RData")
+
+# Tarea 3
+## Realizo ACP
+ACP <- princomp(privacion_valencia[, 2:16])
+
+## Resumen del análisis
+standard_dev <- ACP$sdev
+prop_variance <- (ACP$sdev ^ 2) / sum(ACP$sdev ^ 2)
+cumulative_prop <- cumsum(prop_variance)
+
+tab_summary <- data.frame(standard_dev, prop_variance, cumulative_prop)
+colnames(tab_summary) <- c("Desviación estandar", "Proporción de varianza explicada", 
+                    "Varianza acumulada")
+
+pandoc.table(tab_summary, justify = 'centre', round = 3, 
+      caption = "Resumen del análisis de componentes principales")
+
+## Peso de las variables originales en las componentes principales
+panderOptions('table.continues', "Continuación.")
+panderOptions('table.continues.affix', "(continúa en la página siguiente).")
+pandoc.table(as.table(ACP$loadings), justify = 'centre', round = 3, 
+caption = "Peso de las variables originales en las componentes principales.")
+
+## Construcción de las componentes principales
+Ind_privacion <- list()
+
+for (i in 1:15) {
+  Ind_privacion[[i]] <- as.matrix(privacion_valencia[, 2:16]) %*% ACP$loadings[, i]
+}
+```
+
+## Representación gráfica de las 4 primeras componentes principales del análisis.
+
+```{r pinta_mapas, results = 'asis', fig.align = "center", fig.width = 12, fig.height = 12, out.width = "15cm", out.height = "20cm"}
+# Tarea 4
+## Función para realizar la representación gráfica de una variable en un mapa
+pinta_mapas <- function(cartografia, variable, n_grupos) {
+  if (!require(RColorBrewer)) {
+    install.packages("RColorBrewer")
+    library(RColorBrewer)
+  }
+  if (!require(sp)) {
+    install.packages("sp")
+    library(sp)
+  }
+  paleta <- brewer.pal(n_grupos, "BrBG")
+  grupos <- quantile(variable, probs = seq(0, 1, 1 / n_grupos))
+  pcorte <- c(grupos[1] - 0.5, grupos[2:n_grupos], grupos[n_grupos + 1] + 0.5)
+  colores <- paleta[
+    findInterval(variable[match(cartografia@data$CUSEC, privacion_valencia[, 1])], pcorte)
+    ]
+  leyenda <- c()
+  for (j in 2:length(pcorte)){ 
+    leyenda[j] <- paste0(round(pcorte[j - 1], 2), " - ", round(pcorte[j], 2))
+    }
+  plot(cartografia, col = colores)
+  legend("bottomright", leyenda[-1], title = "Índice de privación", 
+         border = NULL, fill = paleta, bty = "n")
+}
+
+for (i in 1:4){
+  cat("## Componente principal", i)
+  pinta_mapas(carto_valencia, Ind_privacion[[i]], 5)
+}
+```
+

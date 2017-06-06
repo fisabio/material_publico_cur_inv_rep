@@ -1,0 +1,100 @@
+---
+title: "Resolución Práctica 2"
+runtime: shiny
+output: html_document
+---
+
+# INICIO
+
+Cargamos las funciones y librerías  que ya utilizamos en la práctica 1. Cargamos también el banco de datos necesario
+
+```{r error=FALSE, message=FALSE}
+library(RColorBrewer)
+library(sp)
+library(RColorBrewer)
+
+load("../datos/datos_practicas.RData")
+
+pinta_mapas <- function(cartografia, variable, n_grupos) {
+paleta <- brewer.pal(n_grupos, "BrBG")[1:n_grupos]
+grupos <- quantile(variable, probs = seq(0, 1, 1 / n_grupos))
+pcorte <- c(grupos[1] - 0.5, grupos[2:n_grupos], grupos[n_grupos + 1] + 0.5)
+colores <- paleta[
+findInterval(variable[match(cartografia@data$CUSEC, privacion_valencia[, 1])], pcorte)
+]
+leyenda <- c()
+for (j in 2:length(pcorte)) {
+leyenda[j] <- paste0(round(pcorte[j - 1], 2), " - ", round(pcorte[j], 2))
+}
+plot(cartografia, col = colores)
+legend("bottomright", leyenda[-1], title = "Índice de privación",
+border = NULL, fill = paleta, bty = "n")
+}
+```
+
+#MÓDULO DESCRIPTIVO
+
+```{r}
+
+  selectInput("SelVar", label = "Selecciona Variable", 
+      choices = colnames(privacion_valencia), 
+      selected = colnames(privacion_valencia)[2])
+
+  renderPrint(summary(privacion_valencia[,input$SelVar]))
+  
+  renderPlot(hist(privacion_valencia[,input$SelVar],col="yellow",xlab="",ylab=input$SelVar))
+```
+
+#MÓDULO ÍNDICE DE PRIVACIÓN
+
+## Tabla con la desviación estándar, la proporción de varianza explicada y la varianza acumulada de las n componentes principales.
+
+```{r}
+
+inputPanel(
+  sliderInput("slider.n", label = h3("Selecciona número de componentes que quieres mostrar"), min = 1, 
+        max = dim(privacion_valencia)[2]-1, value = dim(privacion_valencia)[2]-1)
+)
+
+#Calculo ACP con todas las componentes
+ACP <- princomp(privacion_valencia[, 2:16])
+standard_dev <- ACP$sdev
+prop_variance <- (ACP$sdev ^ 2) / sum(ACP$sdev ^ 2)
+cumulative_prop <- cumsum(prop_variance)
+tab_summary <- data.frame(standard_dev, prop_variance, cumulative_prop)
+colnames(tab_summary) <- c("Desviación estandar", "Proporción de varianza explicada",
+"Varianza acumulada")
+
+renderTable(tab_summary[1:(input$slider.n),], justify = "centre", round = 3,
+caption = "Resumen del análisis de componentes principales")
+
+```
+
+##Tabla con los pesos de las variables originales en cada una de las n primeras componentes
+```{r}
+renderTable(as.table(ACP$loadings)[,1:(input$slider.n)], justify = "centre", round = 3,
+caption = "Peso de las variables originales en las componentes principales")
+
+```
+
+##Mapa de cada componente principal
+
+```{r}
+Ind_privacion<-list()
+for (i in 1:15) {
+Ind_privacion[[i]] <- as.matrix(privacion_valencia[, 2:16]) %*% ACP$loadings[, i]
+}
+
+  inputPanel(
+  selectInput("CP", label = "Selecciona Componente Principal", 
+      choices = 1:(dim(privacion_valencia)[2]-1), 
+      selected = 1),
+  sliderInput("slider.ngrupos", label = h3("Selecciona número de intervalos a representar"), min = 4, 
+        max = 8, value = 5)
+)
+
+renderPlot({
+  pinta_mapas(carto_valencia, Ind_privacion[[as.numeric(input$CP)]], as.numeric(input$slider.ngrupos))},height=1000, width=1200)
+
+ 
+```
